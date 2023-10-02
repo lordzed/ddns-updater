@@ -1,1 +1,106 @@
-
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+    <meta http-equiv="X-UA-Compatible" content="ie=edge"/>
+    <title>DnS Updater</title>
+    <!-- CSS files -->
+ <script src="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/js/tabler.min.js"></script>
+ <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/css/tabler.min.css">
+    <style>
+      @import url('https://rsms.me/inter/inter.css');
+      :root {
+      	--tblr-font-sans-serif: 'Inter Var', -apple-system, BlinkMacSystemFont, San Francisco, Segoe UI, Roboto, Helvetica Neue, sans-serif;
+      }
+      body {
+      	font-feature-settings: "cv03", "cv04", "cv11";
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <!-- Navbar -->
+      <header class="navbar navbar-expand-md d-print-none" data-bs-theme="dark">
+        <div class="container-xl">
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar-menu" aria-controls="navbar-menu" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+          </button>
+          <h1 class="navbar-brand navbar-brand-autodark d-none-navbar-horizontal pe-0 pe-md-3">
+              <img src="https://www.freepnglogos.com/uploads/wrench/wrench-logo-png-gear-hard-repair-fix--0.png" width="110" height="32" alt="Tabler" class="navbar-brand-image">
+              DnS Updater
+          </h1>
+      </header>
+      <div class="page-wrapper">
+        <!-- Page header -->
+        <div class="page-header d-print-none">
+          <div class="container-xl">
+            <div class="row g-2 align-items-center">
+              <div class="col">
+                <h2 class="page-title">
+                  DDNS Server Domains
+                </h2>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Page body -->
+        <div class="page-body">
+          <div class="container-xl">
+            <div class="card">
+              <div class="card-body">
+                <div id="table-default" class="table-responsive">
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th><button class="table-sort" data-sort="sort-name">Domain</button></th>
+                        <th><button class="table-sort" data-sort="sort-city">Host</button></th>
+                        <th><button class="table-sort" data-sort="sort-type">Provider</button></th>
+                        <th><button class="table-sort" data-sort="sort-score">IP version</button></th>
+                        <th><button class="table-sort" data-sort="sort-date">Update status</button></th>
+                        <th><button class="table-sort" data-sort="sort-quantity">Set IP</button></th>
+                        <th><button class="table-sort" data-sort="sort-quantity">Previous IPs</button></th>
+                      </tr>
+                    </thead>
+                      <tbody class="table-tbody">
+                       {{range .Rows}}
+                      <tr>
+                        <td>{{.Domain}}</td>
+                        <td>{{.Host}}</td>
+                        <td>{{.Provider}}</td>
+                        <td>{{.IPVersion}}</td>
+                        <td>{{.Status}}</td>
+                        <td>{{.CurrentIP}}</td>
+                        <td>{{.PreviousIPs}}</td>
+                      </tr>
+                      {{end}}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="container-xl">
+       <ul class="timeline">
+                  <li class="timeline-event">
+                    <div class="timeline-event-icon"><!-- Download SVG icon from http://tabler-icons.io/i/settings -->
+                      <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"></path><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"></path></svg>
+                    </div>
+                    <div class="card timeline-event-card">
+                      <div class="card-body">
+                        <h4>Start by having the following content in config.json, or in your <b>CONFIG</b> environment variable:</h4>
+                        <p class="text-muted">Check the complete guide at the <a href="https://github.com/lordzed/ddns-updater">project
+                            page</a>.</p>
+                      </div>
+                    </div>
+                  </li>
+                </ul>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </footer>
+      </div>
+    </div>
+  </body>
+</html>
