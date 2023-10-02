@@ -1,63 +1,100 @@
 <html>
-
 <head>
   <title>DDNS Updater</title>
   <link rel="icon" href="favicon.ico" type="image/x-icon">
-  <style>
-    table {
-      font-family: arial, sans-serif;
-      font-size: 14px;
-      font-size: 1vw;
-      border-collapse: collapse;
-      width: 100%;
-    }
 
-    td,
-    th {
-      border: 2px solid #9a9fa1;
-      text-align: center;
-      padding: 1%;
-      max-width: 35%;
-      transition: all 0.7s;
-    }
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
 
-    th {
-      background-color: #d8daf7;
-    }
+<style>
+* {
+  box-sizing: border-box;
+}
 
-    tr:nth-child(odd) {
-      background-color: #e6f7ea;
-    }
+body {
+align-items: center;
+  margin: 75;
+}
 
-    tr:nth-child(even) {
-      background-color: #f3ebe3;
-    }
+/* Style the header */
+.header {
+  background-color: #f1f1f1;
+  padding: 20px;
+  text-align: center;
+}
 
-    tr {
-      transition: all 0.7s;
-    }
+ 
 
-    tr:hover {
-      background: #c1e2f0;
-    }
+/* Create three equal columns that floats next to each other */
+.column {
+  align: center;
+  width: 100%;
+  padding: 25px;
+}
 
-    a {
-      text-decoration: none;
-    }
-  </style>
+.box-x1 {
+  align: center;
+  width: 55%;
+  padding: 75px;
+}
+
+/* Clear floats after the columns */
+.row::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+/* Responsive layout - makes the three columns stack on top of each other instead of next to each other */
+@media screen and (max-width:600px) {
+  .column {
+    width: 100%;
+  }
+}
+</style>
+
+
 </head>
 
+
+ 
+ <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="bootstrap" viewBox="0 0 150 150">
+    <title>DDNS Updater</title>
+    <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="currentColor" class="bi bi-wrench-adjustable-circle-fill" viewBox="0 0 16 16">
+  <path d="M6.705 8.139a.25.25 0 0 0-.288-.376l-1.5.5.159.474.808-.27-.595.894a.25.25 0 0 0 .287.376l.808-.27-.595.894a.25.25 0 0 0 .287.376l1.5-.5-.159-.474-.808.27.596-.894a.25.25 0 0 0-.288-.376l-.808.27.596-.894Z"/>
+  <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16Zm-6.202-4.751 1.988-1.657a4.5 4.5 0 0 1 7.537-4.623L7.497 6.5l1 2.5 1.333 3.11c-.56.251-1.18.39-1.833.39a4.49 4.49 0 0 1-1.592-.29L4.747 14.2a7.031 7.031 0 0 1-2.949-2.951ZM12.496 8a4.491 4.491 0 0 1-1.703 3.526L9.497 8.5l2.959-1.11c.027.2.04.403.04.61Z"/>
+</svg>
+
+<main>
+  <h1 class="visually-hidden">Headers examples</h1>
+  <div class="container" bis_skin_checked="1">
+    <header class="d-flex flex-wrap justify-content-center py-3 mb-4 border-bottom">
+      <a href="http://localhost:8000" class="d-flex align-items-center mb-3 mb-md-0 me-md-auto text-dark text-decoration-none">
+        <svg class="bi me-2" width="40" height="32"><use xlink:href="#bootstrap"></use></svg>
+        <span class="fs-4">DDNS Updater</span>
+      </a>
+      <ul class="nav nav-pills">
+        
+
+      </ul>
+    </header>
+  </div>
+  <div class="b-example-divider" bis_skin_checked="1"></div>
+
+
 <body>
-  <table>
+  <div class="column">
+  <table class="table">
     <tr>
-      <th>Domain</th>
-      <th>Host</th>
-      <th>Provider</th>
-      <th>IP version</th>
-      <th>Update status</th>
-      <th>Set IP</th>
-      <th>Previous IPs (reverse chronological order)</th>
+      <th scope="col">Domain</th>
+      <th scope="col">Host</th>
+      <th scope="col">Provider</th>
+      <th scope="col">IP version</th>
+      <th scope="col">Update status</th>
+      <th scope="col">Set IP</th>
+      <th scope="col">Previous IPs (reverse chronological order)</th>
     </tr>
+      <tbody class="table-group-divider">
     {{range .Rows}}
     <tr>
       <td>{{.Domain}}</td>
@@ -71,10 +108,20 @@
     {{end}}
   </table>
   <div>
-    Made by <a href="https://qqq.ninja">Quentin McGaw</a>
+  <div class="box-x1">
+<div class="alert alert-success" role="alert">
+  <h4 class="alert-heading">Well done!</h4>
+  <p>To add new hosts you need to edit the config.json in the docker container</p>
+  <hr>
+  <p class="mb-0">Whenever you need to, be sure to use margin utilities to keep things nice and tidy.</p>
+</div>
+</div>
+  </div>
+
+
+
   </div>
   <div>
-    <a href="https://github.com/qdm12/ddns-updater">github.com/qdm12/ddns-updater</a>
   </div>
 
 </body>
