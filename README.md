@@ -318,7 +318,7 @@ We could do an API call to get the record IP address every period, but that woul
 You can build the image yourself with:
 
 ```sh
-docker build -t qmcgaw/ddns-updater https://github.com/qdm12/ddns-updater.git
+docker build -t lordzed/ddns-updater https://github.com/lordzed/ddns-updater.git
 ```
 
 You can use optional build arguments with `--build-arg KEY=VALUE` from the table below:
