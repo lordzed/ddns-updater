@@ -7,40 +7,41 @@ import (
 	"time"
 
 	"github.com/qdm12/ddns-updater/internal/constants"
+	"github.com/qdm12/ddns-updater/internal/healthchecksio"
 	"github.com/qdm12/ddns-updater/internal/models"
 	librecords "github.com/qdm12/ddns-updater/internal/records"
 	"github.com/qdm12/ddns-updater/pkg/publicip/ipversion"
 )
 
 type Runner struct {
-	period       time.Duration
-	db           Database
-	updater      UpdaterInterface
-	force        chan struct{}
-	forceResult  chan []error
-	ipv6MaskBits uint8
-	cooldown     time.Duration
-	resolver     LookupIPer
-	ipGetter     PublicIPFetcher
-	logger       Logger
-	timeNow      func() time.Time
+	period      time.Duration
+	db          Database
+	updater     UpdaterInterface
+	force       chan struct{}
+	forceResult chan []error
+	cooldown    time.Duration
+	resolver    LookupIPer
+	ipGetter    PublicIPFetcher
+	logger      Logger
+	timeNow     func() time.Time
+	hioClient   HealthchecksIOClient
 }
 
 func NewRunner(db Database, updater UpdaterInterface, ipGetter PublicIPFetcher,
-	period time.Duration, ipv6MaskBits uint8, cooldown time.Duration,
-	logger Logger, resolver LookupIPer, timeNow func() time.Time) *Runner {
+	period time.Duration, cooldown time.Duration, logger Logger, resolver LookupIPer,
+	timeNow func() time.Time, hioClient HealthchecksIOClient) *Runner {
 	return &Runner{
-		period:       period,
-		db:           db,
-		updater:      updater,
-		force:        make(chan struct{}),
-		forceResult:  make(chan []error),
-		ipv6MaskBits: ipv6MaskBits,
-		cooldown:     cooldown,
-		resolver:     resolver,
-		ipGetter:     ipGetter,
-		logger:       logger,
-		timeNow:      timeNow,
+		period:      period,
+		db:          db,
+		updater:     updater,
+		force:       make(chan struct{}),
+		forceResult: make(chan []error),
+		cooldown:    cooldown,
+		resolver:    resolver,
+		ipGetter:    ipGetter,
+		logger:      logger,
+		timeNow:     timeNow,
+		hioClient:   hioClient,
 	}
 }
 
@@ -99,15 +100,13 @@ func doIPVersion(records []librecords.Record) (doIP, doIPv4, doIPv6 bool) {
 	return doIP, doIPv4, doIPv6
 }
 
-func (r *Runner) getNewIPs(ctx context.Context, doIP, doIPv4, doIPv6 bool, ipv6MaskBits uint8) (
+func (r *Runner) getNewIPs(ctx context.Context, doIP, doIPv4, doIPv6 bool) (
 	ip, ipv4, ipv6 netip.Addr, errors []error) {
 	var err error
 	if doIP {
 		ip, err = tryAndRepeatGettingIP(ctx, r.ipGetter.IP, r.logger, ipversion.IP4or6)
 		if err != nil {
 			errors = append(errors, err)
-		} else if ip.Is6() {
-			ip = mustMaskIPv6(ip, ipv6MaskBits)
 		}
 	}
 	if doIPv4 {
@@ -120,18 +119,17 @@ func (r *Runner) getNewIPs(ctx context.Context, doIP, doIPv4, doIPv6 bool, ipv6M
 		ipv6, err = tryAndRepeatGettingIP(ctx, r.ipGetter.IP6, r.logger, ipversion.IP6)
 		if err != nil {
 			errors = append(errors, err)
-		} else {
-			ipv6 = mustMaskIPv6(ipv6, ipv6MaskBits)
 		}
 	}
 	return ip, ipv4, ipv6, errors
 }
 
 func (r *Runner) getRecordIDsToUpdate(ctx context.Context, records []librecords.Record,
-	ip, ipv4, ipv6 netip.Addr, now time.Time, ipv6MaskBits uint8) (recordIDs map[uint]struct{}) {
+	ip, ipv4, ipv6 netip.Addr) (recordIDs map[uint]struct{}) {
 	recordIDs = make(map[uint]struct{})
 	for i, record := range records {
-		if shouldUpdate := r.shouldUpdateRecord(ctx, record, ip, ipv4, ipv6, now, ipv6MaskBits); shouldUpdate {
+		shouldUpdate := r.shouldUpdateRecord(ctx, record, ip, ipv4, ipv6)
+		if shouldUpdate {
 			id := uint(i)
 			recordIDs[id] = struct{}{}
 		}
@@ -140,57 +138,58 @@ func (r *Runner) getRecordIDsToUpdate(ctx context.Context, records []librecords.
 }
 
 func (r *Runner) shouldUpdateRecord(ctx context.Context, record librecords.Record,
-	ip, ipv4, ipv6 netip.Addr, now time.Time, ipv6MaskBits uint8) (update bool) {
-	isWithinBanPeriod := record.LastBan != nil && now.Sub(*record.LastBan) < time.Hour
+	ip, ipv4, ipv6 netip.Addr) (update bool) {
+	now := r.timeNow()
+
 	isWithinCooldown := now.Sub(record.History.GetSuccessTime()) < r.cooldown
-	if isWithinBanPeriod || isWithinCooldown {
-		domain := record.Provider.BuildDomainName()
-		r.logger.Debug("record " + domain + " is within ban period or cooldown period, skipping update")
+	if isWithinCooldown {
+		r.logger.Debug(fmt.Sprintf(
+			"record %s is within cooldown period of %s, skipping update",
+			recordToLogString(record), r.cooldown))
+		return false
+	}
+
+	const banPeriod = time.Hour
+	isWithinBanPeriod := record.LastBan != nil && now.Sub(*record.LastBan) < banPeriod
+	if isWithinBanPeriod {
+		r.logger.Info(fmt.Sprintf(
+			"record %s is within ban period of %s started at %s, skipping update",
+			recordToLogString(record), banPeriod, *record.LastBan))
 		return false
 	}
 
 	hostname := record.Provider.BuildDomainName()
 	ipVersion := record.Provider.IPVersion()
+	publicIP := getIPMatchingVersion(ip, ipv4, ipv6, ipVersion)
+
+	if !publicIP.IsValid() {
+		r.logger.Warn(fmt.Sprintf("Skipping update for %s because %s address was not found",
+			hostname, ipVersionToIPKind(ipVersion)))
+		return false
+	} else if publicIP.Is6() {
+		publicIP = ipv6WithSuffix(publicIP, record.Provider.IPv6Suffix())
+	}
+
 	if record.Provider.Proxied() {
 		lastIP := record.History.GetCurrentIP() // can be nil
-		return r.shouldUpdateRecordNoLookup(hostname, ipVersion, lastIP, ip, ipv4, ipv6)
+		return r.shouldUpdateRecordNoLookup(hostname, ipVersion, lastIP, publicIP)
 	}
-	return r.shouldUpdateRecordWithLookup(ctx, hostname, ipVersion, ip, ipv4, ipv6, ipv6MaskBits)
+	return r.shouldUpdateRecordWithLookup(ctx, hostname, ipVersion, publicIP)
 }
 
 func (r *Runner) shouldUpdateRecordNoLookup(hostname string, ipVersion ipversion.IPVersion,
-	lastIP, ip, ipv4, ipv6 netip.Addr) (update bool) {
-	switch ipVersion {
-	case ipversion.IP4or6:
-		if ip.IsValid() && ip.Compare(lastIP) != 0 {
-			r.logger.Info("Last IP address stored for " + hostname +
-				" is " + lastIP.String() + " and your IP address is " + ip.String())
-			return true
-		}
-		r.logger.Debug("Last IP address stored for " + hostname + " is " +
-			lastIP.String() + " and your IP address is " + ip.String() + ", skipping update")
-	case ipversion.IP4:
-		if ipv4.IsValid() && ipv4.Compare(lastIP) != 0 {
-			r.logger.Info("Last IPv4 address stored for " + hostname +
-				" is " + lastIP.String() + " and your IPv4 address is " + ipv4.String())
-			return true
-		}
-		r.logger.Debug("Last IPv4 address stored for " + hostname + " is " +
-			lastIP.String() + " and your IPv4 address is " + ipv4.String() + ", skipping update")
-	case ipversion.IP6:
-		if ipv6.IsValid() && ipv6.Compare(lastIP) != 0 {
-			r.logger.Info("Last IPv6 address stored for " + hostname +
-				" is " + lastIP.String() + " and your IPv6 address is " + ipv6.String())
-			return true
-		}
-		r.logger.Debug("Last IPv6 address stored for " + hostname + " is " +
-			lastIP.String() + " and your IPv6 address is " + ipv6.String() + ", skipping update")
+	lastIP, publicIP netip.Addr) (update bool) {
+	ipKind := ipVersionToIPKind(ipVersion)
+	if publicIP.IsValid() && publicIP.Compare(lastIP) != 0 {
+		r.logInfoNoLookupUpdate(hostname, ipKind, lastIP, publicIP)
+		return true
 	}
+	r.logDebugNoLookupSkip(hostname, ipKind, lastIP, publicIP)
 	return false
 }
 
-func (r *Runner) shouldUpdateRecordWithLookup(ctx context.Context, hostname string, ipVersion ipversion.IPVersion,
-	ip, ipv4, ipv6 netip.Addr, ipv6MaskBits uint8) (update bool) {
+func (r *Runner) shouldUpdateRecordWithLookup(ctx context.Context, hostname string,
+	ipVersion ipversion.IPVersion, publicIP netip.Addr) (update bool) {
 	const tries = 5
 	recordIPv4, recordIPv6, err := r.lookupIPsResilient(ctx, hostname, tries)
 	if err != nil {
@@ -203,40 +202,19 @@ func (r *Runner) shouldUpdateRecordWithLookup(ctx context.Context, hostname stri
 			fmt.Sprint(tries) + " tries: " + err.Error()) // update anyway
 	}
 
-	if recordIPv6.IsValid() {
-		recordIPv6 = mustMaskIPv6(recordIPv6, ipv6MaskBits)
+	ipKind := ipVersionToIPKind(ipVersion)
+	recordIP := recordIPv4
+	if publicIP.Is6() {
+		recordIP = recordIPv6
 	}
+	recordIP = getIPMatchingVersion(recordIP, recordIPv4, recordIPv6, ipVersion)
 
-	switch ipVersion {
-	case ipversion.IP4or6:
-		recordIP := recordIPv4
-		if ip.Is6() {
-			recordIP = recordIPv6
-		}
-		if ip.IsValid() && ip.Compare(recordIPv4) != 0 && ip.Compare(recordIPv6) != 0 {
-			r.logger.Info("IP address of " + hostname + " is " + recordIP.String() +
-				" and your IP address is " + ip.String())
-			return true
-		}
-		r.logger.Debug("IP address of " + hostname + " is " + recordIP.String() +
-			" and your IP address is " + ip.String() + ", skipping update")
-	case ipversion.IP4:
-		if ipv4.IsValid() && ipv4.Compare(recordIPv4) != 0 {
-			r.logger.Info("IPv4 address of " + hostname + " is " + recordIPv4.String() +
-				" and your IPv4 address is " + ipv4.String())
-			return true
-		}
-		r.logger.Debug("IPv4 address of " + hostname + " is " + recordIPv4.String() +
-			" and your IPv4 address is " + ipv4.String() + ", skipping update")
-	case ipversion.IP6:
-		if ipv6.IsValid() && ipv6.Compare(recordIPv6) != 0 {
-			r.logger.Info("IPv6 address of " + hostname + " is " + recordIPv6.String() +
-				" and your IPv6 address is " + ipv6.String())
-			return true
-		}
-		r.logger.Debug("IPv6 address of " + hostname + " is " + recordIPv6.String() +
-			" and your IPv6 address is " + ipv6.String() + ", skipping update")
+	if publicIP.IsValid() && publicIP.Compare(recordIP) != 0 {
+		// Note if the recordIP is not valid (not found), we want to update.
+		r.logInfoLookupUpdate(hostname, ipKind, recordIP, publicIP)
+		return true
 	}
+	r.logDebugLookupSkip(hostname, ipKind, recordIP, publicIP)
 	return false
 }
 
@@ -268,18 +246,34 @@ func setInitialUpToDateStatus(db Database, id uint, updateIP netip.Addr, now tim
 	return db.Update(id, record)
 }
 
-func (r *Runner) updateNecessary(ctx context.Context, ipv6MaskBits uint8) (errors []error) {
+func setInitialPublicIPFailStatus(db Database, id uint, now time.Time) error {
+	record, err := db.Select(id)
+	if err != nil {
+		return err
+	}
+	record.Status = constants.FAIL
+	record.Message = "public IP address not found"
+	record.Time = now
+	return db.Update(id, record)
+}
+
+func (r *Runner) updateNecessary(ctx context.Context) (errors []error) {
 	records := r.db.SelectAll()
 	doIP, doIPv4, doIPv6 := doIPVersion(records)
 	r.logger.Debug(fmt.Sprintf("configured to fetch IP: v4 or v6: %t, v4: %t, v6: %t", doIP, doIPv4, doIPv6))
-	ip, ipv4, ipv6, errors := r.getNewIPs(ctx, doIP, doIPv4, doIPv6, ipv6MaskBits)
+	ip, ipv4, ipv6, errors := r.getNewIPs(ctx, doIP, doIPv4, doIPv6)
 	r.logger.Debug(fmt.Sprintf("your public IP address are: v4 or v6: %s, v4: %s, v6: %s", ip, ipv4, ipv6))
 	for _, err := range errors {
 		r.logger.Error(err.Error())
 	}
 
+	recordIDs := r.getRecordIDsToUpdate(ctx, records, ip, ipv4, ipv6)
+
+	// Current time is used to set initial states for records already
+	// up to date or in the fail state due to the public IP not found.
+	// No need to have it queried within the next for loop since each
+	// iteration is fast and has no IO involved.
 	now := r.timeNow()
-	recordIDs := r.getRecordIDsToUpdate(ctx, records, ip, ipv4, ipv6, now, ipv6MaskBits)
 
 	for i, record := range records {
 		id := uint(i)
@@ -287,9 +281,25 @@ func (r *Runner) updateNecessary(ctx context.Context, ipv6MaskBits uint8) (error
 		if requireUpdate || record.Status != constants.UNSET {
 			continue
 		}
-		updateIP := getIPMatchingVersion(ip, ipv4, ipv6, record.Provider.IPVersion())
+
+		ipVersion := record.Provider.IPVersion()
+		updateIP := getIPMatchingVersion(ip, ipv4, ipv6, ipVersion)
+		if !updateIP.IsValid() {
+			// warning was already logged in getRecordIDsToUpdate
+			err := setInitialPublicIPFailStatus(r.db, id, now)
+			if err != nil {
+				err = fmt.Errorf("setting initial public IP fail status: %w", err)
+				errors = append(errors, err)
+				r.logger.Error(err.Error())
+			}
+			continue
+		} else if updateIP.Is6() {
+			updateIP = ipv6WithSuffix(updateIP, record.Provider.IPv6Suffix())
+		}
+
 		err := setInitialUpToDateStatus(r.db, id, updateIP, now)
 		if err != nil {
+			err = fmt.Errorf("setting initial up to date status: %w", err)
 			errors = append(errors, err)
 			r.logger.Error(err.Error())
 		}
@@ -297,12 +307,26 @@ func (r *Runner) updateNecessary(ctx context.Context, ipv6MaskBits uint8) (error
 	for id := range recordIDs {
 		record := records[id]
 		updateIP := getIPMatchingVersion(ip, ipv4, ipv6, record.Provider.IPVersion())
+		// Note: each record id has a matching valid public IP address.
+		if updateIP.Is6() {
+			updateIP = ipv6WithSuffix(updateIP, record.Provider.IPv6Suffix())
+		}
 		r.logger.Info("Updating record " + record.Provider.String() + " to use " + updateIP.String())
-		err := r.updater.Update(ctx, id, updateIP, r.timeNow())
+		err := r.updater.Update(ctx, id, updateIP)
 		if err != nil {
 			errors = append(errors, err)
 			r.logger.Error(err.Error())
 		}
+	}
+
+	healthchecksIOState := healthchecksio.Ok
+	if len(errors) > 0 {
+		healthchecksIOState = healthchecksio.Fail
+	}
+
+	err := r.hioClient.Ping(ctx, healthchecksIOState)
+	if err != nil {
+		r.logger.Error("pinging healthchecks.io failed: " + err.Error())
 	}
 
 	return errors
@@ -314,9 +338,9 @@ func (r *Runner) Run(ctx context.Context, done chan<- struct{}) {
 	for {
 		select {
 		case <-ticker.C:
-			r.updateNecessary(ctx, r.ipv6MaskBits)
+			r.updateNecessary(ctx)
 		case <-r.force:
-			r.forceResult <- r.updateNecessary(ctx, r.ipv6MaskBits)
+			r.forceResult <- r.updateNecessary(ctx)
 		case <-ctx.Done():
 			ticker.Stop()
 			return

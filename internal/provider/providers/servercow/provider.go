@@ -19,21 +19,21 @@ import (
 )
 
 type Provider struct {
-	username      string
-	host          string
 	domain        string
+	host          string
 	ipVersion     ipversion.IPVersion
+	ipv6Suffix    netip.Prefix
+	username      string
 	password      string
 	useProviderIP bool
 	ttl           uint
 }
 
-func New(data json.RawMessage, domain, host string, ipVersion ipversion.IPVersion) (
+func New(data json.RawMessage, domain, host string, ipVersion ipversion.IPVersion, ipv6Suffix netip.Prefix) (
 	p *Provider, err error) {
 	extraSettings := struct {
 		Username      string `json:"username"`
 		Password      string `json:"password"`
-		Domain        string `json:"domain"`
 		TTL           uint   `json:"ttl"`
 		UseProviderIP bool   `json:"provider_ip"`
 	}{}
@@ -43,12 +43,13 @@ func New(data json.RawMessage, domain, host string, ipVersion ipversion.IPVersio
 	}
 
 	p = &Provider{
+		domain:        domain,
 		host:          host,
 		ipVersion:     ipVersion,
+		ipv6Suffix:    ipv6Suffix,
 		username:      extraSettings.Username,
 		password:      extraSettings.Password,
 		useProviderIP: extraSettings.UseProviderIP,
-		domain:        extraSettings.Domain,
 		ttl:           extraSettings.TTL,
 	}
 	err = p.isValid()
@@ -64,8 +65,7 @@ func (p *Provider) isValid() error {
 		return fmt.Errorf("%w", errors.ErrUsernameNotSet)
 	case p.password == "":
 		return fmt.Errorf("%w", errors.ErrPasswordNotSet)
-	}
-	if strings.Contains(p.host, "*") {
+	case strings.Contains(p.host, "*"):
 		return fmt.Errorf("%w", errors.ErrHostWildcard)
 	}
 	return nil
@@ -85,6 +85,10 @@ func (p *Provider) Host() string {
 
 func (p *Provider) IPVersion() ipversion.IPVersion {
 	return p.ipVersion
+}
+
+func (p *Provider) IPv6Suffix() netip.Prefix {
+	return p.ipv6Suffix
 }
 
 func (p *Provider) Proxied() bool {

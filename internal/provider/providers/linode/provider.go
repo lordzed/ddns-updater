@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
-	"strconv"
 
 	"github.com/qdm12/ddns-updater/internal/models"
 	"github.com/qdm12/ddns-updater/internal/provider/constants"
@@ -21,14 +20,16 @@ import (
 )
 
 type Provider struct {
-	domain    string
-	host      string
-	ipVersion ipversion.IPVersion
-	token     string
+	domain     string
+	host       string
+	ipVersion  ipversion.IPVersion
+	ipv6Suffix netip.Prefix
+	token      string
 }
 
 func New(data json.RawMessage, domain, host string,
-	ipVersion ipversion.IPVersion) (p *Provider, err error) {
+	ipVersion ipversion.IPVersion, ipv6Suffix netip.Prefix) (
+	p *Provider, err error) {
 	extraSettings := struct {
 		Token string `json:"token"`
 	}{}
@@ -37,10 +38,11 @@ func New(data json.RawMessage, domain, host string,
 		return nil, err
 	}
 	p = &Provider{
-		domain:    domain,
-		host:      host,
-		ipVersion: ipVersion,
-		token:     extraSettings.Token,
+		domain:     domain,
+		host:       host,
+		ipVersion:  ipVersion,
+		ipv6Suffix: ipv6Suffix,
+		token:      extraSettings.Token,
 	}
 	err = p.isValid()
 	if err != nil {
@@ -70,6 +72,10 @@ func (p *Provider) Host() string {
 
 func (p *Provider) IPVersion() ipversion.IPVersion {
 	return p.ipVersion
+}
+
+func (p *Provider) IPv6Suffix() netip.Prefix {
+	return p.ipv6Suffix
 }
 
 func (p *Provider) Proxied() bool {
@@ -198,7 +204,7 @@ func (p *Provider) getRecordID(ctx context.Context, client *http.Client,
 	u := url.URL{
 		Scheme: "https",
 		Host:   "api.linode.com",
-		Path:   "/v4/domains/" + strconv.Itoa(domainID) + "/records",
+		Path:   fmt.Sprintf("/v4/domains/%d/records", domainID),
 	}
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
@@ -246,7 +252,7 @@ func (p *Provider) createRecord(ctx context.Context, client *http.Client,
 	u := url.URL{
 		Scheme: "https",
 		Host:   "api.linode.com",
-		Path:   "/v4/domains/" + strconv.Itoa(domainID) + "/records",
+		Path:   fmt.Sprintf("/v4/domains/%d/records", domainID),
 	}
 
 	type domainRecord struct {
@@ -308,7 +314,7 @@ func (p *Provider) updateRecord(ctx context.Context, client *http.Client,
 	u := url.URL{
 		Scheme: "https",
 		Host:   "api.linode.com",
-		Path:   "/v4/domains/" + strconv.Itoa(domainID) + "/records/" + strconv.Itoa(recordID),
+		Path:   fmt.Sprintf("/v4/domains/%d/records/%d", domainID, recordID),
 	}
 
 	data := struct {

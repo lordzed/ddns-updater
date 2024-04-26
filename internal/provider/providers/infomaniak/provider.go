@@ -22,13 +22,15 @@ type Provider struct {
 	domain        string
 	host          string
 	ipVersion     ipversion.IPVersion
+	ipv6Suffix    netip.Prefix
 	username      string
 	password      string
 	useProviderIP bool
 }
 
 func New(data json.RawMessage, domain, host string,
-	ipVersion ipversion.IPVersion) (p *Provider, err error) {
+	ipVersion ipversion.IPVersion, ipv6Suffix netip.Prefix) (
+	p *Provider, err error) {
 	extraSettings := struct {
 		Username      string `json:"username"`
 		Password      string `json:"password"`
@@ -42,6 +44,7 @@ func New(data json.RawMessage, domain, host string,
 		domain:        domain,
 		host:          host,
 		ipVersion:     ipVersion,
+		ipv6Suffix:    ipv6Suffix,
 		username:      extraSettings.Username,
 		password:      extraSettings.Password,
 		useProviderIP: extraSettings.UseProviderIP,
@@ -81,6 +84,10 @@ func (p *Provider) IPVersion() ipversion.IPVersion {
 	return p.ipVersion
 }
 
+func (p *Provider) IPv6Suffix() netip.Prefix {
+	return p.ipv6Suffix
+}
+
 func (p *Provider) Proxied() bool {
 	return false
 }
@@ -107,7 +114,8 @@ func (p *Provider) Update(ctx context.Context, client *http.Client, ip netip.Add
 	}
 	values := url.Values{}
 	values.Set("hostname", utils.BuildURLQueryHostname(p.host, p.domain))
-	if !p.useProviderIP {
+	useProviderIP := p.useProviderIP && (ip.Is4() || !p.ipv6Suffix.IsValid())
+	if !useProviderIP {
 		values.Set("myip", ip.String())
 	}
 	u.RawQuery = values.Encode()
@@ -132,28 +140,31 @@ func (p *Provider) Update(ctx context.Context, client *http.Client, ip netip.Add
 
 	switch response.StatusCode {
 	case http.StatusOK:
-		switch {
-		case strings.HasPrefix(s, "good "):
-			newIP, err = netip.ParseAddr(s[5:])
-			if err != nil {
-				return netip.Addr{}, fmt.Errorf("%w: %w", errors.ErrIPReceivedMalformed, err)
-			} else if !p.useProviderIP && ip.Compare(newIP) != 0 {
-				return netip.Addr{}, fmt.Errorf("%w: sent ip %s to update but received %s",
-					errors.ErrIPReceivedMismatch, ip, newIP)
+		prefixFound := ""
+		for _, prefix := range []string{
+			"successfully_changed", "no_change",
+			"good", "nochg", // old prefixes
+		} {
+			if strings.HasPrefix(s, prefix) {
+				prefixFound = prefix
+				break
 			}
-			return newIP, nil
-		case strings.HasPrefix(s, "nochg "):
-			newIP, err = netip.ParseAddr(s[6:])
-			if err != nil {
-				return netip.Addr{}, fmt.Errorf("%w: in response %q", errors.ErrReceivedNoResult, s)
-			} else if !p.useProviderIP && ip.Compare(newIP) != 0 {
-				return netip.Addr{}, fmt.Errorf("%w: sent ip %s to update but received %s",
-					errors.ErrIPReceivedMismatch, ip, newIP)
-			}
-			return newIP, nil
-		default:
+		}
+
+		if prefixFound == "" {
 			return netip.Addr{}, fmt.Errorf("%w: %s", errors.ErrUnknownResponse, s)
 		}
+
+		ipString := strings.TrimPrefix(s, prefixFound+" ")
+		newIP, err = netip.ParseAddr(ipString)
+		if err != nil {
+			return netip.Addr{}, fmt.Errorf("%w: for response %q: %w",
+				errors.ErrIPReceivedMalformed, ipString, err)
+		} else if !useProviderIP && ip.Compare(newIP) != 0 {
+			return netip.Addr{}, fmt.Errorf("%w: sent ip %s to update but received %s",
+				errors.ErrIPReceivedMismatch, ip, newIP)
+		}
+		return newIP, nil
 	case http.StatusBadRequest:
 		switch s {
 		case constants.Nohost:

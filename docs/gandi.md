@@ -13,9 +13,10 @@ This provider uses Gandi v5 API
       "provider": "gandi",
       "domain": "domain.com",
       "host": "@",
-      "key": "key",
+      "personal_access_token": "token",
       "ttl": 3600,
-      "ip_version": "ipv4"
+      "ip_version": "ipv4",
+      "ipv6_suffix": ""
     }
   ]
 }
@@ -25,13 +26,14 @@ This provider uses Gandi v5 API
 
 - `"domain"`
 - `"host"` which can be a subdomain, `@` or a wildcard `*`
-- `"key"`
+- `"personal_access_token"`
 
 ### Optional parameters
 
-- `"ip_version"` can be `ipv4` (A records) or `ipv6` (AAAA records), defaults to `ipv4 or ipv6`
+- `"ip_version"` can be `ipv4` (A records), or `ipv6` (AAAA records) or `ipv4 or ipv6` (update one of the two, depending on the public ip found). It defaults to `ipv4 or ipv6`.
+- `"ipv6_suffix"` is the IPv6 interface identifiersuffix to use. It can be for example `0:0:0:0:72ad:8fbb:a54e:bedd/64`. If left empty, it defaults to no suffix and the raw public IPv6 address obtained is used in the record updating.
 - `"ttl"` default is `3600`
 
 ## Domain setup
 
-[Gandi Documentation Website](https://docs.gandi.net/en/domain_names/advanced_users/api.html#gandi-s-api)
+[Gandi Documentation Website](https://docs.gandi.net/en/rest_api/index.html)

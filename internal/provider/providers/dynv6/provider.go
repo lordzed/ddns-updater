@@ -20,12 +20,14 @@ type Provider struct {
 	domain        string
 	host          string
 	ipVersion     ipversion.IPVersion
+	ipv6Suffix    netip.Prefix
 	token         string
 	useProviderIP bool
 }
 
 func New(data json.RawMessage, domain, host string,
-	ipVersion ipversion.IPVersion) (p *Provider, err error) {
+	ipVersion ipversion.IPVersion, ipv6Suffix netip.Prefix) (
+	p *Provider, err error) {
 	extraSettings := struct {
 		Token         string `json:"token"`
 		UseProviderIP bool   `json:"provider_ip"`
@@ -38,6 +40,7 @@ func New(data json.RawMessage, domain, host string,
 		domain:        domain,
 		host:          host,
 		ipVersion:     ipVersion,
+		ipv6Suffix:    ipv6Suffix,
 		token:         extraSettings.Token,
 		useProviderIP: extraSettings.UseProviderIP,
 	}
@@ -74,6 +77,10 @@ func (p *Provider) IPVersion() ipversion.IPVersion {
 	return p.ipVersion
 }
 
+func (p *Provider) IPv6Suffix() netip.Prefix {
+	return p.ipv6Suffix
+}
+
 func (p *Provider) Proxied() bool {
 	return false
 }
@@ -107,12 +114,15 @@ func (p *Provider) Update(ctx context.Context, client *http.Client, ip netip.Add
 	values := url.Values{}
 	values.Set("token", p.token)
 	values.Set("zone", utils.BuildURLQueryHostname(p.host, p.domain))
-	if !p.useProviderIP {
-		if isIPv4 {
-			values.Set("ipv4", ip.String())
-		} else {
-			values.Set("ipv6", ip.String())
-		}
+	ipValue := ip.String()
+	useProviderIP := p.useProviderIP && (ip.Is4() || !p.ipv6Suffix.IsValid())
+	if useProviderIP {
+		ipValue = "auto"
+	}
+	if isIPv4 {
+		values.Set("ipv4", ipValue)
+	} else {
+		values.Set("ipv6", ipValue)
 	}
 	u.RawQuery = values.Encode()
 

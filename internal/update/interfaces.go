@@ -4,8 +4,8 @@ import (
 	"context"
 	"net"
 	"net/netip"
-	"time"
 
+	"github.com/qdm12/ddns-updater/internal/healthchecksio"
 	"github.com/qdm12/ddns-updater/internal/records"
 )
 
@@ -16,7 +16,7 @@ type PublicIPFetcher interface {
 }
 
 type UpdaterInterface interface {
-	Update(ctx context.Context, recordID uint, ip netip.Addr, now time.Time) (err error)
+	Update(ctx context.Context, recordID uint, ip netip.Addr) (err error)
 }
 
 type Database interface {
@@ -38,4 +38,8 @@ type Logger interface {
 	Info(s string)
 	Warn(s string)
 	Error(s string)
+}
+
+type HealthchecksIOClient interface {
+	Ping(ctx context.Context, state healthchecksio.State) (err error)
 }

@@ -1,8 +1,8 @@
 ARG BUILDPLATFORM=linux/amd64
-ARG ALPINE_VERSION=3.18
-ARG GO_VERSION=1.20
+ARG ALPINE_VERSION=3.19
+ARG GO_VERSION=1.21
 ARG XCPUTRANSLATE_VERSION=v0.6.0
-ARG GOLANGCI_LINT_VERSION=v1.53.2
+ARG GOLANGCI_LINT_VERSION=v1.55.2
 ARG MOCKGEN_VERSION=v1.6.0
 
 FROM --platform=${BUILDPLATFORM} qmcgaw/xcputranslate:${XCPUTRANSLATE_VERSION} AS xcputranslate
@@ -50,6 +50,7 @@ RUN git init && \
     rm -rf .git/
 
 FROM --platform=$BUILDPLATFORM base AS build
+RUN mkdir -p /tmp/data
 ARG VERSION=unknown
 ARG CREATED="an unknown date"
 ARG COMMIT=unknown
@@ -58,7 +59,7 @@ RUN GOARCH="$(xcputranslate translate -targetplatform ${TARGETPLATFORM} -field a
     GOARM="$(xcputranslate translate -targetplatform ${TARGETPLATFORM} -field arm)" \
     go build -trimpath -ldflags="-s -w \
     -X 'main.version=$VERSION' \
-    -X 'main.created=$CREATED' \
+    -X 'main.date=$CREATED' \
     -X 'main.commit=$COMMIT' \
     " -o app cmd/updater/main.go
 
@@ -69,6 +70,7 @@ ARG UID=1000
 ARG GID=1000
 USER ${UID}:${GID}
 ENTRYPOINT ["/updater/app"]
+COPY --from=build --chown=${UID}:${GID} /tmp/data /updater/data
 ENV \
     # Core
     CONFIG= \
@@ -85,7 +87,7 @@ ENV \
     RESOLVER_ADDRESS= \
     RESOLVER_TIMEOUT=5s \
     # Web UI
-    LISTENING_PORT=8000 \
+    LISTENING_ADDRESS=:8000 \
     ROOT_URL=/ \
     # Backup
     BACKUP_PERIOD=0 \
@@ -95,7 +97,9 @@ ENV \
     LOG_CALLER=hidden \
     SHOUTRRR_ADDRESSES= \
     SHOUTRRR_DEFAULT_TITLE="DDNS Updater" \
-    TZ=
+    TZ= \
+    HEALTH_SERVER_ADDRESS=127.0.0.1:9999 \
+    HEALTH_HEALTHCHECKSIO_UUID=
 ARG VERSION=unknown
 ARG CREATED="an unknown date"
 ARG COMMIT=unknown

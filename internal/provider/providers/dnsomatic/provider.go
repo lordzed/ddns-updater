@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
-	"regexp"
 	"strings"
 
 	"github.com/qdm12/ddns-updater/internal/models"
@@ -24,13 +23,15 @@ type Provider struct {
 	domain        string
 	host          string
 	ipVersion     ipversion.IPVersion
+	ipv6Suffix    netip.Prefix
 	username      string
 	password      string
 	useProviderIP bool
 }
 
 func New(data json.RawMessage, domain, host string,
-	ipVersion ipversion.IPVersion) (p *Provider, err error) {
+	ipVersion ipversion.IPVersion, ipv6Suffix netip.Prefix) (
+	p *Provider, err error) {
 	extraSettings := struct {
 		Username      string `json:"username"`
 		Password      string `json:"password"`
@@ -44,6 +45,7 @@ func New(data json.RawMessage, domain, host string,
 		domain:        domain,
 		host:          host,
 		ipVersion:     ipVersion,
+		ipv6Suffix:    ipv6Suffix,
 		username:      extraSettings.Username,
 		password:      extraSettings.Password,
 		useProviderIP: extraSettings.UseProviderIP,
@@ -55,13 +57,10 @@ func New(data json.RawMessage, domain, host string,
 	return p, nil
 }
 
-var regexUsername = regexp.MustCompile(`^[a-zA-Z0-9@._-]{3,25}$`)
-
 func (p *Provider) isValid() error {
 	switch {
-	case !regexUsername.MatchString(p.username):
-		return fmt.Errorf("%w: username %q does not match regex %q",
-			errors.ErrUsernameNotValid, p.username, regexUsername)
+	case p.username == "":
+		return fmt.Errorf("%w", errors.ErrUsernameNotSet)
 	case p.password == "":
 		return fmt.Errorf("%w", errors.ErrPasswordNotSet)
 	}
@@ -84,8 +83,12 @@ func (p *Provider) IPVersion() ipversion.IPVersion {
 	return p.ipVersion
 }
 
+func (p *Provider) IPv6Suffix() netip.Prefix {
+	return p.ipv6Suffix
+}
+
 func (p *Provider) Proxied() bool {
-	return false
+	return p.host == "all"
 }
 
 func (p *Provider) BuildDomainName() string {
@@ -110,7 +113,8 @@ func (p *Provider) Update(ctx context.Context, client *http.Client, ip netip.Add
 		User:   url.UserPassword(p.username, p.password),
 	}
 	values := url.Values{}
-	if !p.useProviderIP {
+	useProviderIP := p.useProviderIP && (ip.Is4() || !p.ipv6Suffix.IsValid())
+	if useProviderIP {
 		values.Set("myip", ip.String())
 	}
 	values.Set("wildcard", "NOCHG")
@@ -176,7 +180,7 @@ func (p *Provider) Update(ctx context.Context, client *http.Client, ip netip.Add
 	}
 
 	newIP = ips[0]
-	if !p.useProviderIP && ip.Compare(newIP) != 0 {
+	if !useProviderIP && ip.Compare(newIP) != 0 {
 		return netip.Addr{}, fmt.Errorf("%w: sent ip %s to update but received %s",
 			errors.ErrIPReceivedMismatch, ip, newIP)
 	}

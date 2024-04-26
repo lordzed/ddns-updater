@@ -24,6 +24,7 @@ type Provider struct {
 	domain         string
 	host           string
 	ipVersion      ipversion.IPVersion
+	ipv6Suffix     netip.Prefix
 	key            string
 	token          string
 	email          string
@@ -34,7 +35,8 @@ type Provider struct {
 }
 
 func New(data json.RawMessage, domain, host string,
-	ipVersion ipversion.IPVersion) (p *Provider, err error) {
+	ipVersion ipversion.IPVersion, ipv6Suffix netip.Prefix) (
+	p *Provider, err error) {
 	extraSettings := struct {
 		Key            string `json:"key"`
 		Token          string `json:"token"`
@@ -52,6 +54,7 @@ func New(data json.RawMessage, domain, host string,
 		domain:         domain,
 		host:           host,
 		ipVersion:      ipVersion,
+		ipv6Suffix:     ipv6Suffix,
 		key:            extraSettings.Key,
 		token:          extraSettings.Token,
 		email:          extraSettings.Email,
@@ -114,6 +117,10 @@ func (p *Provider) Host() string {
 
 func (p *Provider) IPVersion() ipversion.IPVersion {
 	return p.ipVersion
+}
+
+func (p *Provider) IPv6Suffix() netip.Prefix {
+	return p.ipv6Suffix
 }
 
 func (p *Provider) Proxied() bool {
@@ -218,7 +225,7 @@ func (p *Provider) getRecordID(ctx context.Context, client *http.Client, newIP n
 	return listRecordsResponse.Result[0].ID, false, nil
 }
 
-func (p *Provider) CreateRecord(ctx context.Context, client *http.Client, ip netip.Addr) (recordID string, err error) {
+func (p *Provider) createRecord(ctx context.Context, client *http.Client, ip netip.Addr) (recordID string, err error) {
 	recordType := constants.A
 
 	if ip.Is6() {
@@ -307,7 +314,7 @@ func (p *Provider) Update(ctx context.Context, client *http.Client, ip netip.Add
 
 	switch {
 	case stderrors.Is(err, errors.ErrReceivedNoResult):
-		identifier, err = p.CreateRecord(ctx, client, ip)
+		identifier, err = p.createRecord(ctx, client, ip)
 		if err != nil {
 			return netip.Addr{}, fmt.Errorf("creating record: %w", err)
 		}

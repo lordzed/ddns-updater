@@ -14,7 +14,8 @@
       "host": "@",
       "ttl": 600,
       "token": "yourtoken",
-      "ip_version": "ipv4"
+      "ip_version": "ipv4",
+      "ipv6_suffix": ""
     }
   ]
 }
@@ -27,7 +28,7 @@
 - `"host"` is your host and can be `"@"`, a subdomain or the wildcard `"*"`.
 See [this issue comment for context](https://github.com/qdm12/ddns-updater/issues/243#issuecomment-928313949). This is left as is for compatibility.
 - `"ttl"` integer value for record TTL in seconds (specify 1 for automatic)
-- One of the following ([how to find API keys](https://support.cloudflare.com/hc/en-us/articles/200167836-Where-do-I-find-my-Cloudflare-API-key-)):
+- One of the following ([how to find API keys](https://developers.cloudflare.com/fundamentals/api/get-started/)):
   - Email `"email"` and Global API Key `"key"`
   - User service key `"user_service_key"`
   - API Token `"token"`, configured with DNS edit permissions for your DNS name's zone
@@ -35,6 +36,7 @@ See [this issue comment for context](https://github.com/qdm12/ddns-updater/issue
 ### Optional parameters
 
 - `"proxied"` can be set to `true` to use the proxy services of Cloudflare
-- `"ip_version"` can be `ipv4` (A records) or `ipv6` (AAAA records), and defaults to `ipv4 or ipv6`
+- `"ip_version"` can be `ipv4` (A records), or `ipv6` (AAAA records) or `ipv4 or ipv6` (update one of the two, depending on the public ip found). It defaults to `ipv4 or ipv6`.
+- `"ipv6_suffix"` is the IPv6 interface identifiersuffix to use. It can be for example `0:0:0:0:72ad:8fbb:a54e:bedd/64`. If left empty, it defaults to no suffix and the raw public IPv6 address obtained is used in the record updating.
 
 Special thanks to @Starttoaster for helping out with the [documentation](https://gist.github.com/Starttoaster/07d568c2a99ad7631dd776688c988326) and testing.
